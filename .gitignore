@@ -1,0 +1,22 @@
+target/
+
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+events.jsonl
+
+.DS_Store
+
+# Lab forks are public, so agent transcripts stay out of a lab repo.
+transcripts/
