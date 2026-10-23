@@ -2,6 +2,8 @@ package edu.cmu.cs214.campusreserve.core.domain;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * A booking: one user holds one room over one interval.
@@ -16,7 +18,8 @@ public record Booking(
     TimeInterval interval,
     int attendees,
     BookingStatus status,
-    Instant createdAt) {
+    Instant createdAt,
+    List<BookingModification> history) {
 
     public Booking {
         id = Identifiers.require(id, "booking id");
@@ -25,9 +28,26 @@ public record Booking(
         Objects.requireNonNull(interval, "interval");
         Objects.requireNonNull(status, "status");
         Objects.requireNonNull(createdAt, "createdAt");
+        history = List.copyOf(history);
         if (attendees <= 0) {
             throw new IllegalArgumentException("Attendees must be positive: " + attendees);
         }
+    }
+
+    /** Compatibility constructor for a booking with no modifications. */
+    public Booking(String id, String roomId, String userId, TimeInterval interval,
+        int attendees, BookingStatus status, Instant createdAt) {
+        this(id, roomId, userId, interval, attendees, status, createdAt, List.of());
+    }
+
+    /** Returns an immutable replacement with one additional history entry. */
+    public Booking modified(TimeInterval replacement, int partySize, Instant occurredAt) {
+        if (interval.equals(replacement) && attendees == partySize) {
+            return this;
+        }
+        List<BookingModification> changes = new ArrayList<>(history);
+        changes.add(new BookingModification(interval, attendees, replacement, partySize, occurredAt));
+        return new Booking(id, roomId, userId, replacement, partySize, status, createdAt, changes);
     }
 
     /** Builds a confirmed booking. */
@@ -38,7 +58,7 @@ public record Booking(
 
     /** Returns a cancelled copy of this booking. */
     public Booking cancelled() {
-        return new Booking(id, roomId, userId, interval, attendees, BookingStatus.CANCELLED, createdAt);
+        return new Booking(id, roomId, userId, interval, attendees, BookingStatus.CANCELLED, createdAt, history);
     }
 
     /** Does this booking still hold the room? */

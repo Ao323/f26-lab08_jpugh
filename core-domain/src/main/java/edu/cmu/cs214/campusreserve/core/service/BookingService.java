@@ -4,6 +4,8 @@ import edu.cmu.cs214.campusreserve.core.domain.Booking;
 import edu.cmu.cs214.campusreserve.core.domain.BookingOutcome;
 import edu.cmu.cs214.campusreserve.core.domain.BookingRequest;
 import edu.cmu.cs214.campusreserve.core.domain.CancellationResult;
+import edu.cmu.cs214.campusreserve.core.domain.ModificationResult;
+import edu.cmu.cs214.campusreserve.core.events.BookingModifiedEvent;
 import edu.cmu.cs214.campusreserve.core.domain.RejectionReason;
 import edu.cmu.cs214.campusreserve.core.domain.Room;
 import edu.cmu.cs214.campusreserve.core.domain.TimeInterval;
@@ -122,6 +124,48 @@ public final class BookingService {
         bookings.save(booking);
         publish(BookingCreatedEvent.of(booking, now()));
         return new BookingOutcome.Confirmed(booking);
+    }
+
+    /**
+     * Replaces an upcoming booking's details without releasing its identity.
+     * The room and owner are taken from storage, never from caller input.
+     */
+    public ModificationResult modifyBooking(
+        String bookingId, String requesterId, TimeInterval interval, int attendees) {
+        Objects.requireNonNull(bookingId, "bookingId");
+        Objects.requireNonNull(requesterId, "requesterId");
+        Objects.requireNonNull(interval, "interval");
+        Optional<Booking> stored = bookings.findById(bookingId);
+        if (stored.isEmpty()) {
+            return ModificationResult.rejected(RejectionReason.BOOKING_NOT_FOUND);
+        }
+        Booking original = stored.get();
+        // Modification has the same owner/status/start boundary as cancellation.
+        Optional<RejectionReason> eligibility = rules.checkCancellable(original, requesterId);
+        if (eligibility.isPresent()) {
+            return ModificationResult.rejected(eligibility.get());
+        }
+        if (original.interval().equals(interval) && original.attendees() == attendees) {
+            return new ModificationResult.Modified(original);
+        }
+        Optional<Room> room = rooms.findById(original.roomId());
+        if (room.isEmpty()) {
+            return ModificationResult.rejected(RejectionReason.ROOM_NOT_FOUND);
+        }
+        BookingRequest request = new BookingRequest(original.roomId(), original.userId(), interval, attendees);
+        Optional<RejectionReason> invalid = rules.checkRequest(request, room.get());
+        if (invalid.isPresent()) {
+            return ModificationResult.rejected(invalid.get());
+        }
+        Optional<RejectionReason> conflict = checkModificationConflicts(original, interval);
+        if (conflict.isPresent()) {
+            return ModificationResult.rejected(conflict.get());
+        }
+        Instant occurredAt = now();
+        Booking modified = original.modified(interval, attendees, occurredAt);
+        bookings.save(modified);
+        publish(BookingModifiedEvent.of(original, modified, occurredAt));
+        return new ModificationResult.Modified(modified);
     }
 
     /**
@@ -266,6 +310,23 @@ public final class BookingService {
             now());
         waitlist.save(entry);
         return new BookingOutcome.Waitlisted(entry);
+    }
+
+    /**
+     * Checks replacement room and owner calendars, excluding only this booking.
+     * Modification keeps its existing place in the owner's held-booking count.
+     */
+    private Optional<RejectionReason> checkModificationConflicts(
+        Booking booking, TimeInterval candidate) {
+        if (conflictChecker.hasConflict(
+            bookings.findActiveByRoom(booking.roomId()), candidate, booking.id())) {
+            return Optional.of(RejectionReason.ROOM_UNAVAILABLE);
+        }
+        if (conflictChecker.hasConflict(
+            bookings.findActiveByUser(booking.userId()), candidate, booking.id())) {
+            return Optional.of(RejectionReason.USER_DOUBLE_BOOKED);
+        }
+        return Optional.empty();
     }
 
     /** The asker's own caps: how many bookings they hold, and their calendar. */

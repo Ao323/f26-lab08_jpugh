@@ -20,3 +20,4 @@ events.jsonl
 
 # Lab forks are public, so agent transcripts stay out of a lab repo.
 transcripts/
+guardrails/.ntfs-lock-state.json

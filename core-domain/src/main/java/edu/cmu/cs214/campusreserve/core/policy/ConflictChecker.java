@@ -25,6 +25,17 @@ public final class ConflictChecker {
         return firstConflict(existing, candidate).isPresent();
     }
 
+    /** Checks a replacement interval, excluding only the booking being modified. */
+    public boolean hasConflict(
+        Collection<Booking> existing, TimeInterval candidate, String excludedBookingId) {
+        Objects.requireNonNull(existing, "existing");
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(excludedBookingId, "excludedBookingId");
+        return hasConflict(existing.stream()
+            .filter(booking -> !booking.id().equals(excludedBookingId))
+            .toList(), candidate);
+    }
+
     /** The earliest booking that collides with {@code candidate}, if there is one. */
     public Optional<Booking> firstConflict(Collection<Booking> existing, TimeInterval candidate) {
         Objects.requireNonNull(existing, "existing");

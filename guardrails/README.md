@@ -151,7 +151,7 @@ permissions back.
 
 **Configure.**
 
-1. Edit `guardrails/protected-trees.txt`, replacing the placeholder with your
+1. Edit `guardrails/protected-trees.txt`, replace billing, accounts and cli with your
    out-of-scope modules.
 2. Check the list, then lock:
 
@@ -195,6 +195,40 @@ access can run that. Treat it as a stop on accidental writes.
 ---
 
 ## Demonstration protocol
+
+### Windows alternative for recipe C
+
+Use `lockdown.ps1` and `unlock.ps1` in PowerShell on NTFS instead of the shell
+scripts. They read the same `protected-trees.txt`. From the repository root:
+
+```powershell
+.\guardrails\lockdown.ps1 -List
+.\guardrails\lockdown.ps1
+# Perform the agent demonstration, then restore permissions:
+.\guardrails\unlock.ps1
+```
+
+The lock adds explicit deny rules for the current Windows user's writes and
+deletes on each configured module's `src/` tree and `pom.xml`. Directories also
+deny child deletion and pass the deny rules to new descendants. `target/` is
+not changed. Reparse points (including junctions) are rejected before locking.
+Run the agent as the same Windows user. The lock does not restrict other users.
+
+Before changing any ACL, the script saves every original DACL in
+`guardrails/.ntfs-lock-state.json` (ignored by Git). Do not delete or edit this
+file: unlocking restores those DACLs, including inheritance settings, rather
+than granting blanket write access. A second lock refuses to overwrite this
+snapshot. After a partial failure, run unlock before retrying; unlock keeps
+the snapshot if restoration fails. Avoid concurrent file or permission edits
+while locked. Unlock restores the saved paths, independently of later changes
+to `protected-trees.txt`.
+
+This remains a guard against accidental edits: a file owner can change ACLs,
+and elevated processes or a process using another identity can bypass the
+boundary. Writable ancestor directories also remain outside this protection.
+Do not treat it as a security sandbox. A successful script run is not proof of
+enforcement: capture an actual agent edit denied by NTFS and verify the file
+is unchanged. A sandbox approval rejection alone is not an NTFS demonstration.
 
 The same for all three recipes. A configuration you never triggered is not
 evidence.
